@@ -1,0 +1,11 @@
+{
+  "env": {
+    "node": true
+  },
+  "globals": {
+    "console": "readonly"
+  },
+  "rules": {
+    "no-console": "off"
+  }
+}
