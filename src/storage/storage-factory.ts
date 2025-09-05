@@ -1,29 +1,15 @@
 import { IPotluckStorage } from './potluck';
-import { MemoryPotluckStorage } from './memory-potluck-storage';
 import { SQLitePotluckStorage } from './sqlite-potluck-storage';
-
-export type StorageType = 'memory' | 'sqlite';
 
 export class StorageFactory {
   private static instance: IPotluckStorage;
 
-  public static getStorage(type?: StorageType): IPotluckStorage {
+  public static getStorage(): IPotluckStorage {
     if (StorageFactory.instance) {
       return StorageFactory.instance;
     }
 
-    const storageType = type || (process.env.STORAGE_TYPE as StorageType) || 'memory';
-    
-    switch (storageType) {
-      case 'sqlite':
-        StorageFactory.instance = new SQLitePotluckStorage();
-        break;
-      case 'memory':
-      default:
-        StorageFactory.instance = new MemoryPotluckStorage();
-        break;
-    }
-
+    StorageFactory.instance = new SQLitePotluckStorage();
     return StorageFactory.instance;
   }
 

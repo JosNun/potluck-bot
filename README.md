@@ -6,7 +6,7 @@ A Discord bot for organizing potluck events with interactive item management. Us
 
 - 🍽️ **Interactive Potlucks**: Create and manage potluck events with clickable buttons
 - 📋 **Item Management**: Users can claim/unclaim items and add custom items
-- 💾 **Persistent Storage**: SQLite database for reliable data persistence
+- 💾 **SQLite Storage**: Persistent database for reliable data storage
 - ⚡ **Fast**: Built with TypeScript and OXC linting (50-100x faster than ESLint)
 - 🎯 **Modern**: Uses discord.js v14 with latest best practices
 - 📦 **pnpm**: Package manager for faster installs and better dependency management
@@ -76,8 +76,7 @@ src/
 ├── storage/          # Data persistence layer
 │   ├── potluck.ts    # Potluck data types and interfaces
 │   ├── sqlite-potluck-storage.ts   # SQLite implementation
-│   ├── memory-potluck-storage.ts   # In-memory implementation
-│   ├── storage-factory.ts          # Storage provider factory
+│   ├── storage-factory.ts          # Storage factory
 │   └── sqlite-adapter.ts           # SQLite database adapter
 ├── types/            # TypeScript type definitions
 │   └── index.ts      # Command interface & client extensions
