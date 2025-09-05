@@ -1,7 +1,7 @@
 {
   "name": "potluck-bot",
   "version": "1.0.0",
-  "description": "",
+  "description": "A Discord bot for organizing potluck events with interactive item management",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
@@ -14,7 +14,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "better-sqlite3": "^12.2.0",
     "discord.js": "^14.22.1",
