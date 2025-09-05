@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, CommandInteraction, Client, Collection } from 'discord.js';
+import { SlashCommandBuilder, CommandInteraction, Collection } from 'discord.js';
 
 export interface Command {
   data: SlashCommandBuilder;

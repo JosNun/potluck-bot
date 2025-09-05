@@ -4,7 +4,7 @@ import { createEventLogger } from '../utils/logger';
 export default {
   name: Events.ClientReady,
   once: true,
-  execute(client: Client) {
+  async execute(client: Client) {
     if (!client.user) return;
     
     const logger = createEventLogger('client_ready', {
@@ -24,5 +24,7 @@ export default {
       guildCount: client.guilds.cache.size,
       totalMembers: client.guilds.cache.reduce((acc, guild) => acc + guild.memberCount, 0)
     }, `Bot is active in ${client.guilds.cache.size} server(s)`);
+
+    logger.info({ event: 'bot_startup_complete' }, 'Bot startup complete - ready to handle potluck interactions');
   },
 };
