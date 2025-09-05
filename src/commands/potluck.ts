@@ -291,19 +291,20 @@ export async function handlePotluckButtonInteraction(interaction: ButtonInteract
 }
 
 async function handlePotluckButton(interaction: ButtonInteraction, potluckId: string) {
-  // Defer the interaction immediately to avoid timing issues
-  await interaction.deferReply({ ephemeral: true });
-  
   const potluck = await storage.getPotluck(potluckId);
   if (!potluck) {
-    await interaction.editReply({ content: 'Potluck not found!' });
+    await interaction.reply({ content: 'Potluck not found!', ephemeral: true });
     return;
   }
 
   if (interaction.customId === 'add-custom-item') {
+    // Don't defer for modal interactions - we need to show the modal directly
     await handleAddCustomItem(interaction, potluckId);
     return;
   }
+
+  // Defer the interaction for claim/unclaim operations to avoid timing issues
+  await interaction.deferReply({ ephemeral: true });
 
   if (interaction.customId.startsWith('claim-')) {
     const itemId = interaction.customId.replace('claim-', '');
@@ -394,7 +395,7 @@ export async function handleAddCustomModal(interaction: ModalSubmitInteraction) 
       ? `Added **${itemName}** and claimed it for you!`
       : `Added **${itemName}** to the potluck!`;
     
-    await interaction.followUp({ 
+    await interaction.reply({ 
       content: responseText, 
       flags: MessageFlags.Ephemeral 
     });

@@ -38,3 +38,9 @@ lerna-debug.log*
 
 # OS generated files
 Thumbs.db
+
+# Database files
+/data/
+*.db
+*.db-shm
+*.db-wal
