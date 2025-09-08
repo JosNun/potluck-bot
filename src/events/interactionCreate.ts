@@ -1,6 +1,7 @@
 import { Events, Interaction } from 'discord.js';
 import { createCommandLogger } from '../utils/logger';
 import { handlePotluckModal, handleAddCustomModal, handlePotluckButtonInteraction } from '../commands/potluck';
+import { handlePotluckFromEventModal } from '../commands/potluck-from-event';
 
 export default {
   name: Events.InteractionCreate,
@@ -12,6 +13,10 @@ export default {
       }
       if (interaction.customId.startsWith('add-custom-')) {
         await handleAddCustomModal(interaction);
+        return;
+      }
+      if (interaction.customId.startsWith('potluck-from-event-')) {
+        await handlePotluckFromEventModal(interaction);
         return;
       }
     }
@@ -45,6 +50,20 @@ export default {
         }
         return;
       }
+    }
+
+    if (interaction.isAutocomplete()) {
+      const command = interaction.client.commands.get(interaction.commandName);
+      if (!command) return;
+
+      try {
+        if ('autocomplete' in command && command.autocomplete) {
+          await command.autocomplete(interaction);
+        }
+      } catch (error) {
+        console.error('Error handling autocomplete:', error);
+      }
+      return;
     }
 
     if (!interaction.isChatInputCommand()) return;

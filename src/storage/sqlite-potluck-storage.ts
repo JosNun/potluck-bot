@@ -11,9 +11,10 @@ export class SQLitePotluckStorage implements IPotluckStorage {
   private selectItems!: Database.Statement;
   private updatePotluckStmt!: Database.Statement;
   private updatePotluckMessageStmt!: Database.Statement;
+  private updateDiscordEventStmt!: Database.Statement;
+  private selectPotluckByEventId!: Database.Statement;
   private updateItemClaims!: Database.Statement;
   private selectPotlucksByGuild!: Database.Statement;
-  private deleteItem!: Database.Statement;
 
   constructor(dbPath?: string) {
     const adapter = SQLiteAdapter.getInstance(dbPath);
@@ -23,8 +24,8 @@ export class SQLitePotluckStorage implements IPotluckStorage {
 
   private prepareStatements(): void {
     this.insertPotluck = this.db.prepare(`
-      INSERT INTO potlucks (id, name, date, theme, created_by, guild_id, channel_id, message_id, message_created_at, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO potlucks (id, name, date, theme, created_by, guild_id, channel_id, message_id, message_created_at, discord_event_id, event_start_time, event_end_time, rsvp_sync_enabled, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     this.insertItem = this.db.prepare(`
@@ -42,7 +43,7 @@ export class SQLitePotluckStorage implements IPotluckStorage {
 
     this.updatePotluckStmt = this.db.prepare(`
       UPDATE potlucks 
-      SET name = ?, date = ?, theme = ?, message_id = ?, message_created_at = ?
+      SET name = ?, date = ?, theme = ?, message_id = ?, message_created_at = ?, discord_event_id = ?, event_start_time = ?, event_end_time = ?, rsvp_sync_enabled = ?
       WHERE id = ?
     `);
 
@@ -50,6 +51,16 @@ export class SQLitePotluckStorage implements IPotluckStorage {
       UPDATE potlucks 
       SET message_id = ?, message_created_at = ?
       WHERE id = ?
+    `);
+
+    this.updateDiscordEventStmt = this.db.prepare(`
+      UPDATE potlucks 
+      SET discord_event_id = ?, event_start_time = ?, event_end_time = ?, rsvp_sync_enabled = ?
+      WHERE id = ?
+    `);
+
+    this.selectPotluckByEventId = this.db.prepare(`
+      SELECT * FROM potlucks WHERE discord_event_id = ?
     `);
 
     this.updateItemClaims = this.db.prepare(`
@@ -60,10 +71,6 @@ export class SQLitePotluckStorage implements IPotluckStorage {
 
     this.selectPotlucksByGuild = this.db.prepare(`
       SELECT * FROM potlucks WHERE guild_id = ?
-    `);
-
-    this.deleteItem = this.db.prepare(`
-      DELETE FROM potluck_items WHERE id = ?
     `);
   }
 
@@ -85,6 +92,10 @@ export class SQLitePotluckStorage implements IPotluckStorage {
         potluck.channelId,
         potluck.messageId || null,
         potluck.messageCreatedAt?.getTime() || null,
+        potluck.discordEventId || null,
+        potluck.eventStartTime?.getTime() || null,
+        potluck.eventEndTime?.getTime() || null,
+        potluck.rsvpSyncEnabled ? 1 : 0,
         potluck.createdAt.getTime()
       );
 
@@ -123,6 +134,10 @@ export class SQLitePotluckStorage implements IPotluckStorage {
       channelId: potluckRow.channel_id,
       messageId: potluckRow.message_id || undefined,
       messageCreatedAt: potluckRow.message_created_at ? new Date(potluckRow.message_created_at) : undefined,
+      discordEventId: potluckRow.discord_event_id || undefined,
+      eventStartTime: potluckRow.event_start_time ? new Date(potluckRow.event_start_time) : undefined,
+      eventEndTime: potluckRow.event_end_time ? new Date(potluckRow.event_end_time) : undefined,
+      rsvpSyncEnabled: potluckRow.rsvp_sync_enabled === 1,
       items,
       createdAt: new Date(potluckRow.created_at),
     };
@@ -136,6 +151,10 @@ export class SQLitePotluckStorage implements IPotluckStorage {
         potluck.theme || null,
         potluck.messageId || null,
         potluck.messageCreatedAt?.getTime() || null,
+        potluck.discordEventId || null,
+        potluck.eventStartTime?.getTime() || null,
+        potluck.eventEndTime?.getTime() || null,
+        potluck.rsvpSyncEnabled ? 1 : 0,
         potluck.id
       );
 
@@ -156,6 +175,17 @@ export class SQLitePotluckStorage implements IPotluckStorage {
 
   async updatePotluckMessage(potluckId: string, messageId: string, messageCreatedAt: Date): Promise<boolean> {
     const result = this.updatePotluckMessageStmt.run(messageId, messageCreatedAt.getTime(), potluckId);
+    return result.changes > 0;
+  }
+
+  async updateDiscordEvent(potluckId: string, eventId: string, startTime?: Date, endTime?: Date, rsvpSyncEnabled?: boolean): Promise<boolean> {
+    const result = this.updateDiscordEventStmt.run(
+      eventId,
+      startTime?.getTime() || null,
+      endTime?.getTime() || null,
+      rsvpSyncEnabled ? 1 : 0,
+      potluckId
+    );
     return result.changes > 0;
   }
 
@@ -233,11 +263,45 @@ export class SQLitePotluckStorage implements IPotluckStorage {
         channelId: row.channel_id,
         messageId: row.message_id || undefined,
         messageCreatedAt: row.message_created_at ? new Date(row.message_created_at) : undefined,
+        discordEventId: row.discord_event_id || undefined,
+        eventStartTime: row.event_start_time ? new Date(row.event_start_time) : undefined,
+        eventEndTime: row.event_end_time ? new Date(row.event_end_time) : undefined,
+        rsvpSyncEnabled: row.rsvp_sync_enabled === 1,
         items,
         createdAt: new Date(row.created_at),
       });
     }
 
     return potlucks;
+  }
+
+  async getPotluckByEventId(eventId: string): Promise<Potluck | null> {
+    const potluckRow = this.selectPotluckByEventId.get(eventId) as any;
+    if (!potluckRow) return null;
+
+    const itemRows = this.selectItems.all(potluckRow.id) as any[];
+    const items: PotluckItem[] = itemRows.map(row => ({
+      id: row.id,
+      name: row.name,
+      claimedBy: JSON.parse(row.claimed_by),
+    }));
+
+    return {
+      id: potluckRow.id,
+      name: potluckRow.name,
+      date: potluckRow.date || undefined,
+      theme: potluckRow.theme || undefined,
+      createdBy: potluckRow.created_by,
+      guildId: potluckRow.guild_id,
+      channelId: potluckRow.channel_id,
+      messageId: potluckRow.message_id || undefined,
+      messageCreatedAt: potluckRow.message_created_at ? new Date(potluckRow.message_created_at) : undefined,
+      discordEventId: potluckRow.discord_event_id || undefined,
+      eventStartTime: potluckRow.event_start_time ? new Date(potluckRow.event_start_time) : undefined,
+      eventEndTime: potluckRow.event_end_time ? new Date(potluckRow.event_end_time) : undefined,
+      rsvpSyncEnabled: potluckRow.rsvp_sync_enabled === 1,
+      items,
+      createdAt: new Date(potluckRow.created_at),
+    };
   }
 }

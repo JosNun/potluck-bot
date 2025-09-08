@@ -14,6 +14,10 @@ export interface Potluck {
   channelId: string;
   messageId?: string;
   messageCreatedAt?: Date;
+  discordEventId?: string;
+  eventStartTime?: Date;
+  eventEndTime?: Date;
+  rsvpSyncEnabled?: boolean;
   items: PotluckItem[];
   createdAt: Date;
 }
@@ -23,8 +27,10 @@ export interface IPotluckStorage {
   getPotluck(id: string): Promise<Potluck | null>;
   updatePotluck(potluck: Potluck): Promise<void>;
   updatePotluckMessage(potluckId: string, messageId: string, messageCreatedAt: Date): Promise<boolean>;
+  updateDiscordEvent(potluckId: string, eventId: string, startTime?: Date, endTime?: Date, rsvpSyncEnabled?: boolean): Promise<boolean>;
   claimItem(potluckId: string, itemId: string, userId: string): Promise<boolean>;
   unclaimItem(potluckId: string, itemId: string, userId: string): Promise<boolean>;
   addCustomItem(potluckId: string, itemName: string, claimedBy?: string): Promise<PotluckItem>;
   getPotlucksByGuild(guildId: string): Promise<Potluck[]>;
+  getPotluckByEventId(eventId: string): Promise<Potluck | null>;
 }

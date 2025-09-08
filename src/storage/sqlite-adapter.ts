@@ -44,6 +44,7 @@ export class SQLiteAdapter {
       () => this.createPotlucksTable(),
       () => this.createItemsTable(), 
       () => this.createIndexes(),
+      () => this.addDiscordEventFields(),
     ];
 
     const currentVersion = this.db.pragma('user_version', { simple: true }) as number;
@@ -91,6 +92,16 @@ export class SQLiteAdapter {
       CREATE INDEX IF NOT EXISTS idx_potlucks_guild_id ON potlucks (guild_id);
       CREATE INDEX IF NOT EXISTS idx_potlucks_channel_id ON potlucks (channel_id);
       CREATE INDEX IF NOT EXISTS idx_items_potluck_id ON potluck_items (potluck_id);
+    `);
+  }
+
+  private addDiscordEventFields(): void {
+    this.db.exec(`
+      ALTER TABLE potlucks ADD COLUMN discord_event_id TEXT;
+      ALTER TABLE potlucks ADD COLUMN event_start_time INTEGER;
+      ALTER TABLE potlucks ADD COLUMN event_end_time INTEGER;
+      ALTER TABLE potlucks ADD COLUMN rsvp_sync_enabled INTEGER DEFAULT 0;
+      CREATE INDEX IF NOT EXISTS idx_potlucks_discord_event_id ON potlucks (discord_event_id);
     `);
   }
 }

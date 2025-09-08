@@ -15,6 +15,8 @@ import {
 import { randomUUID } from 'crypto';
 import { StorageFactory } from '../storage/storage-factory';
 import { PotluckItem } from '../storage/potluck';
+import { DiscordEventsService } from '../services/discord-events.service';
+import { parsePotluckEventDate, formatEventDate, getDateExamples } from '../utils/date-parser';
 
 const storage = StorageFactory.getStorage();
 
@@ -35,6 +37,16 @@ async function updatePotluckDisplay(potluckId: string, channel: any): Promise<an
   const potluck = await storage.getPotluck(potluckId);
   if (!potluck || !potluck.messageId || !potluck.messageCreatedAt) {
     return null;
+  }
+
+  // Sync with Discord event if one exists
+  if (potluck.discordEventId && channel.client) {
+    try {
+      const eventsService = new DiscordEventsService(channel.client);
+      await eventsService.updateEventFromPotluck(potluck);
+    } catch (error) {
+      console.log('Error syncing Discord event:', error instanceof Error ? error.message : 'Unknown error');
+    }
   }
 
   const newEmbed = createPotluckEmbed(potluck);
@@ -118,10 +130,10 @@ export default {
 
     const dateInput = new TextInputBuilder()
       .setCustomId('potluck-date')
-      .setLabel('Date (optional)')
+      .setLabel('Date & Time (optional)')
       .setStyle(TextInputStyle.Short)
       .setRequired(false)
-      .setPlaceholder('e.g., Saturday, Dec 14th at 6pm')
+      .setPlaceholder('e.g., Saturday at 6pm, next Friday, Dec 14th at 7:30pm')
       .setMaxLength(100);
 
     const themeInput = new TextInputBuilder()
@@ -140,12 +152,21 @@ export default {
       .setPlaceholder('lettuce\nmeat\ntortillas\nbeans\nsour cream\ncheese\nsalsa')
       .setMaxLength(2000);
 
+    const eventDetailsInput = new TextInputBuilder()
+      .setCustomId('event-details')
+      .setLabel('Create Discord Event (optional)')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(false)
+      .setPlaceholder('Type "yes" to create a Discord scheduled event with smart time parsing')
+      .setMaxLength(100);
+
     const nameRow = new ActionRowBuilder<TextInputBuilder>().addComponents(nameInput);
     const dateRow = new ActionRowBuilder<TextInputBuilder>().addComponents(dateInput);
     const themeRow = new ActionRowBuilder<TextInputBuilder>().addComponents(themeInput);
     const itemsRow = new ActionRowBuilder<TextInputBuilder>().addComponents(itemsInput);
+    const eventRow = new ActionRowBuilder<TextInputBuilder>().addComponents(eventDetailsInput);
 
-    modal.addComponents(nameRow, dateRow, themeRow, itemsRow);
+    modal.addComponents(nameRow, dateRow, themeRow, itemsRow, eventRow);
 
     await interaction.showModal(modal);
   },
@@ -158,6 +179,7 @@ export async function handlePotluckModal(interaction: ModalSubmitInteraction) {
   const date = interaction.fields.getTextInputValue('potluck-date') || undefined;
   const theme = interaction.fields.getTextInputValue('potluck-theme') || undefined;
   const itemsText = interaction.fields.getTextInputValue('potluck-items');
+  const createEvent = interaction.fields.getTextInputValue('event-details').toLowerCase().includes('yes');
 
   const items: PotluckItem[] = itemsText
     .split('\n')
@@ -192,10 +214,67 @@ export async function handlePotluckModal(interaction: ModalSubmitInteraction) {
   potluck.messageCreatedAt = new Date();
   await storage.updatePotluck(potluck);
 
+  // Create Discord event if requested
+  if (createEvent) {
+    try {
+      const eventsService = new DiscordEventsService(interaction.client);
+      
+      // Parse date using robust date parser
+      const parsedDate = parsePotluckEventDate(date);
+      
+      const discordEvent = await eventsService.createEventForPotluck(potluck, {
+        startTime: parsedDate.startTime,
+        endTime: parsedDate.endTime,
+        enableRsvpSync: true,
+      });
+
+      let successMessage = `✅ Discord event "${discordEvent?.name}" created!`;
+      
+      if (parsedDate.parseMethod === 'default') {
+        successMessage += ` Used default time (${formatEventDate(parsedDate.startTime)}).`;
+      } else if (parsedDate.wasAmbiguous) {
+        successMessage += ` Interpreted "${parsedDate.originalInput}" as ${formatEventDate(parsedDate.startTime)}.`;
+      }
+
+      if (discordEvent) {
+        await interaction.followUp({
+          content: successMessage,
+          ephemeral: true,
+        });
+      } else {
+        await interaction.followUp({
+          content: '⚠️ Could not create Discord event, but your potluck was created successfully.',
+          ephemeral: true,
+        });
+      }
+    } catch (error) {
+      console.error('Error creating Discord event:', error);
+      
+      let errorMessage = '⚠️ Could not create Discord event, but your potluck was created successfully.';
+      
+      if (error instanceof Error) {
+        if (error.name === 'PermissionError') {
+          errorMessage = '⚠️ I don\'t have permission to create Discord events. Please ask a server admin to give me the **"Manage Events"** permission.\n\n' +
+                        'Your potluck was still created successfully!';
+        } else if (error.message.includes('Missing Permissions')) {
+          errorMessage = '⚠️ Missing Discord permissions. Please ask a server admin to give me the **"Manage Events"** permission to create scheduled events.\n\n' +
+                        'Your potluck was still created successfully!';
+        } else if (date && error.message.includes('date')) {
+          errorMessage += ` The date "${date}" might not be in a recognized format. Try formats like: ${getDateExamples().slice(0, 2).join(', ')}.`;
+        }
+      }
+      
+      await interaction.followUp({
+        content: errorMessage,
+        ephemeral: true,
+      });
+    }
+  }
+
   // No collector setup needed - interactions handled directly
 }
 
-function createPotluckEmbed(potluck: any) {
+export function createPotluckEmbed(potluck: any) {
   const embed = new EmbedBuilder()
     .setTitle(`🍽️ ${potluck.name}`)
     .setColor(0x00AE86)
@@ -209,6 +288,13 @@ function createPotluckEmbed(potluck: any) {
   
   if (potluck.theme) {
     description += `🎭 **Theme:** ${potluck.theme}\n`;
+  }
+
+  if (potluck.discordEventId) {
+    description += `🎉 **Discord Event:** This potluck has a scheduled event!\n`;
+    if (potluck.eventStartTime) {
+      description += `⏰ **Event Time:** <t:${Math.floor(potluck.eventStartTime.getTime() / 1000)}:F>\n`;
+    }
   }
   
   description += '\n**Items:**\n';
@@ -224,7 +310,7 @@ function createPotluckEmbed(potluck: any) {
   return embed;
 }
 
-function createPotluckButtons(potluck: any) {
+export function createPotluckButtons(potluck: any) {
   const rows: ActionRowBuilder<ButtonBuilder>[] = [];
   let currentRow = new ActionRowBuilder<ButtonBuilder>();
   let buttonsInRow = 0;
