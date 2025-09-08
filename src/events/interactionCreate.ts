@@ -1,7 +1,6 @@
 import { Events, Interaction } from 'discord.js';
 import { createCommandLogger } from '../utils/logger';
-import { handlePotluckModal, handleAddCustomModal, handlePotluckButtonInteraction } from '../commands/potluck';
-import { handlePotluckFromEventModal } from '../commands/potluck-from-event';
+import { handlePotluckModal, handleAddCustomModal, handlePotluckButtonInteraction, handlePotluckFromEventModal } from '../commands/potluck';
 
 export default {
   name: Events.InteractionCreate,
