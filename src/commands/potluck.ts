@@ -209,7 +209,7 @@ export default {
 
 async function handlePotluckFromEvent(interaction: ChatInputCommandInteraction, eventId: string) {
   if (!interaction.guild) {
-    await interaction.reply({ content: 'This command can only be used in servers.', ephemeral: true });
+    await interaction.reply({ content: 'This command can only be used in servers.', flags: MessageFlags.Ephemeral });
     return;
   }
   
@@ -217,7 +217,7 @@ async function handlePotluckFromEvent(interaction: ChatInputCommandInteraction, 
     // Fetch the Discord event
     const event = await interaction.guild.scheduledEvents.fetch(eventId);
     if (!event) {
-      await interaction.reply({ content: 'Discord event not found.', ephemeral: true });
+      await interaction.reply({ content: 'Discord event not found.', flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -226,7 +226,7 @@ async function handlePotluckFromEvent(interaction: ChatInputCommandInteraction, 
     if (existingPotluck) {
       await interaction.reply({ 
         content: `A potluck already exists for this event! Check <#${existingPotluck.channelId}> for the potluck message.`, 
-        ephemeral: true 
+        flags: MessageFlags.Ephemeral 
       });
       return;
     }
@@ -262,7 +262,7 @@ async function handlePotluckFromEvent(interaction: ChatInputCommandInteraction, 
     console.error('Error fetching Discord event:', error);
     await interaction.reply({ 
       content: 'Failed to fetch the Discord event. Please try again.', 
-      ephemeral: true 
+      flags: MessageFlags.Ephemeral 
     });
   }
 }
@@ -278,7 +278,7 @@ export async function handlePotluckFromEventModal(interaction: ModalSubmitIntera
     // Fetch the Discord event again to get current data
     const event = await interaction.guild.scheduledEvents.fetch(eventId);
     if (!event) {
-      await interaction.reply({ content: 'Discord event no longer exists.', ephemeral: true });
+      await interaction.reply({ content: 'Discord event no longer exists.', flags: MessageFlags.Ephemeral });
       return;
     }
 
@@ -333,7 +333,7 @@ export async function handlePotluckFromEventModal(interaction: ModalSubmitIntera
       
       await interaction.followUp({
         content: `✅ Potluck created from Discord event "${event.name}"! The event description has been updated with potluck details.`,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
       console.error('Error updating Discord event:', error);
@@ -349,7 +349,7 @@ export async function handlePotluckFromEventModal(interaction: ModalSubmitIntera
       
       await interaction.followUp({
         content: errorMessage,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
   } catch (error) {
@@ -358,9 +358,9 @@ export async function handlePotluckFromEventModal(interaction: ModalSubmitIntera
     const errorMessage = 'Failed to create potluck from Discord event. Please try again.';
     
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ content: errorMessage, ephemeral: true });
+      await interaction.followUp({ content: errorMessage, flags: MessageFlags.Ephemeral });
     } else {
-      await interaction.reply({ content: errorMessage, ephemeral: true });
+      await interaction.reply({ content: errorMessage, flags: MessageFlags.Ephemeral });
     }
   }
 }
@@ -384,6 +384,45 @@ export async function handlePotluckModal(interaction: ModalSubmitInteraction) {
       claimedBy: [],
     }));
 
+  let discordEvent = null;
+  let parsedDate = null;
+  let eventCreationError = null;
+
+  // Create Discord event first if requested
+  if (createEvent) {
+    try {
+      const eventsService = new DiscordEventsService(interaction.client);
+      
+      // Parse date using robust date parser with guild timezone
+      parsedDate = await parsePotluckEventDate(date, { 
+        guildId: interaction.guild.id
+      });
+      
+      // Create a temporary potluck object for event creation
+      const tempPotluck = {
+        id: randomUUID(),
+        name,
+        theme,
+        createdBy: interaction.user.id,
+        guildId: interaction.guild.id,
+        channelId: interaction.channel?.id || '',
+        items,
+        createdAt: new Date(),
+      };
+      
+      discordEvent = await eventsService.createEventForPotluck(tempPotluck, {
+        startTime: parsedDate.startTime,
+        endTime: parsedDate.endTime,
+        enableRsvpSync: true,
+      });
+    } catch (error) {
+      console.error('Error creating Discord event:', error);
+      eventCreationError = error;
+      // Continue with potluck creation even if event creation fails
+    }
+  }
+
+  // Create potluck with Discord event info if available
   const potluck = await storage.createPotluck({
     name,
     date,
@@ -391,6 +430,10 @@ export async function handlePotluckModal(interaction: ModalSubmitInteraction) {
     createdBy: interaction.user.id,
     guildId: interaction.guild.id,
     channelId: interaction.channel?.id || '',
+    discordEventId: discordEvent?.id,
+    eventStartTime: discordEvent?.scheduledStartAt ? new Date(discordEvent.scheduledStartAt) : undefined,
+    eventEndTime: discordEvent?.scheduledEndAt ? new Date(discordEvent.scheduledEndAt) : undefined,
+    rsvpSyncEnabled: !!discordEvent,
     items,
   });
 
@@ -407,21 +450,11 @@ export async function handlePotluckModal(interaction: ModalSubmitInteraction) {
   potluck.messageCreatedAt = new Date();
   await storage.updatePotluck(potluck);
 
-  // Create Discord event if requested
+  // Send follow-up messages about event creation
   if (createEvent) {
-    try {
-      const eventsService = new DiscordEventsService(interaction.client);
-      
-      // Parse date using robust date parser
-      const parsedDate = parsePotluckEventDate(date);
-      
-      const discordEvent = await eventsService.createEventForPotluck(potluck, {
-        startTime: parsedDate.startTime,
-        endTime: parsedDate.endTime,
-        enableRsvpSync: true,
-      });
-
-      let successMessage = `✅ Discord event "${discordEvent?.name}" created!`;
+    if (discordEvent && parsedDate) {
+      // Success - event was created
+      let successMessage = `✅ Discord event "${discordEvent.name}" created!`;
       
       if (parsedDate.parseMethod === 'default') {
         successMessage += ` Used default time (${formatEventDate(parsedDate.startTime)}).`;
@@ -429,20 +462,13 @@ export async function handlePotluckModal(interaction: ModalSubmitInteraction) {
         successMessage += ` Interpreted "${parsedDate.originalInput}" as ${formatEventDate(parsedDate.startTime)}.`;
       }
 
-      if (discordEvent) {
-        await interaction.followUp({
-          content: successMessage,
-          ephemeral: true,
-        });
-      } else {
-        await interaction.followUp({
-          content: '⚠️ Could not create Discord event, but your potluck was created successfully.',
-          ephemeral: true,
-        });
-      }
-    } catch (error) {
-      console.error('Error creating Discord event:', error);
-      
+      await interaction.followUp({
+        content: successMessage,
+        flags: MessageFlags.Ephemeral,
+      });
+    } else if (eventCreationError) {
+      // Error occurred during event creation
+      const error = eventCreationError;
       let errorMessage = '⚠️ Could not create Discord event, but your potluck was created successfully.';
       
       if (error instanceof Error) {
@@ -459,7 +485,13 @@ export async function handlePotluckModal(interaction: ModalSubmitInteraction) {
       
       await interaction.followUp({
         content: errorMessage,
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
+      });
+    } else {
+      // This shouldn't happen, but handle the case where no event was created and no error
+      await interaction.followUp({
+        content: '⚠️ Could not create Discord event, but your potluck was created successfully.',
+        flags: MessageFlags.Ephemeral,
       });
     }
   }
@@ -484,7 +516,8 @@ export function createPotluckEmbed(potluck: any) {
   }
 
   if (potluck.discordEventId) {
-    description += `🎉 **Discord Event:** This potluck has a scheduled event!\n`;
+    const eventUrl = `https://discord.com/events/${potluck.guildId}/${potluck.discordEventId}`;
+    description += `🎉 **Discord Event:** [View Event](${eventUrl})\n`;
     if (potluck.eventStartTime) {
       description += `⏰ **Event Time:** <t:${Math.floor(potluck.eventStartTime.getTime() / 1000)}:F>\n`;
     }
@@ -550,7 +583,7 @@ export async function handlePotluckButtonInteraction(interaction: ButtonInteract
     if (!potluck) {
       await interaction.reply({ 
         content: 'Could not find the potluck associated with this message. The potluck may have been deleted or this is an old message.', 
-        ephemeral: true 
+        flags: MessageFlags.Ephemeral 
       });
       return;
     }
@@ -562,9 +595,9 @@ export async function handlePotluckButtonInteraction(interaction: ButtonInteract
     const errorMessage = 'An error occurred while processing your request. Please try again later.';
     
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ content: errorMessage, ephemeral: true });
+      await interaction.followUp({ content: errorMessage, flags: MessageFlags.Ephemeral });
     } else {
-      await interaction.reply({ content: errorMessage, ephemeral: true });
+      await interaction.reply({ content: errorMessage, flags: MessageFlags.Ephemeral });
     }
   }
 }
@@ -572,7 +605,7 @@ export async function handlePotluckButtonInteraction(interaction: ButtonInteract
 async function handlePotluckButton(interaction: ButtonInteraction, potluckId: string) {
   const potluck = await storage.getPotluck(potluckId);
   if (!potluck) {
-    await interaction.reply({ content: 'Potluck not found!', ephemeral: true });
+    await interaction.reply({ content: 'Potluck not found!', flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -583,7 +616,7 @@ async function handlePotluckButton(interaction: ButtonInteraction, potluckId: st
   }
 
   // Defer the interaction for claim/unclaim operations to avoid timing issues
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   if (interaction.customId.startsWith('claim-')) {
     const itemId = interaction.customId.replace('claim-', '');

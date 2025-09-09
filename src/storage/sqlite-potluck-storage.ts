@@ -1,4 +1,4 @@
-import { IPotluckStorage, Potluck, PotluckItem } from './potluck';
+import { IPotluckStorage, Potluck, PotluckItem, GuildSettings } from './potluck';
 import { SQLiteAdapter } from './sqlite-adapter';
 import { randomUUID } from 'crypto';
 import Database from 'better-sqlite3';
@@ -15,6 +15,9 @@ export class SQLitePotluckStorage implements IPotluckStorage {
   private selectPotluckByEventId!: Database.Statement;
   private updateItemClaims!: Database.Statement;
   private selectPotlucksByGuild!: Database.Statement;
+  private selectGuildSettings!: Database.Statement;
+  private insertGuildSettings!: Database.Statement;
+  private updateGuildTimezone!: Database.Statement;
 
   constructor(dbPath?: string) {
     const adapter = SQLiteAdapter.getInstance(dbPath);
@@ -71,6 +74,21 @@ export class SQLitePotluckStorage implements IPotluckStorage {
 
     this.selectPotlucksByGuild = this.db.prepare(`
       SELECT * FROM potlucks WHERE guild_id = ?
+    `);
+
+    this.selectGuildSettings = this.db.prepare(`
+      SELECT * FROM guild_settings WHERE guild_id = ?
+    `);
+
+    this.insertGuildSettings = this.db.prepare(`
+      INSERT INTO guild_settings (guild_id, timezone, updated_at, updated_by)
+      VALUES (?, ?, ?, ?)
+    `);
+
+    this.updateGuildTimezone = this.db.prepare(`
+      UPDATE guild_settings 
+      SET timezone = ?, updated_at = ?, updated_by = ?
+      WHERE guild_id = ?
     `);
   }
 
@@ -302,6 +320,36 @@ export class SQLitePotluckStorage implements IPotluckStorage {
       rsvpSyncEnabled: potluckRow.rsvp_sync_enabled === 1,
       items,
       createdAt: new Date(potluckRow.created_at),
+    };
+  }
+
+  async getGuildSettings(guildId: string): Promise<GuildSettings | null> {
+    const row = this.selectGuildSettings.get(guildId) as any;
+    if (!row) return null;
+
+    return {
+      guildId: row.guild_id,
+      timezone: row.timezone,
+      updatedAt: new Date(row.updated_at),
+      updatedBy: row.updated_by,
+    };
+  }
+
+  async setGuildTimezone(guildId: string, timezone: string, updatedBy: string): Promise<GuildSettings> {
+    const now = new Date();
+    const existingSettings = await this.getGuildSettings(guildId);
+
+    if (existingSettings) {
+      this.updateGuildTimezone.run(timezone, now.getTime(), updatedBy, guildId);
+    } else {
+      this.insertGuildSettings.run(guildId, timezone, now.getTime(), updatedBy);
+    }
+
+    return {
+      guildId,
+      timezone,
+      updatedAt: now,
+      updatedBy,
     };
   }
 }

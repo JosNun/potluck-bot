@@ -4,6 +4,13 @@ export interface PotluckItem {
   claimedBy: string[];
 }
 
+export interface GuildSettings {
+  guildId: string;
+  timezone: string;
+  updatedAt: Date;
+  updatedBy: string;
+}
+
 export interface Potluck {
   id: string;
   name: string;
@@ -33,4 +40,8 @@ export interface IPotluckStorage {
   addCustomItem(potluckId: string, itemName: string, claimedBy?: string): Promise<PotluckItem>;
   getPotlucksByGuild(guildId: string): Promise<Potluck[]>;
   getPotluckByEventId(eventId: string): Promise<Potluck | null>;
+  
+  // Guild settings methods
+  getGuildSettings(guildId: string): Promise<GuildSettings | null>;
+  setGuildTimezone(guildId: string, timezone: string, updatedBy: string): Promise<GuildSettings>;
 }

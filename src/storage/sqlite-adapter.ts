@@ -45,6 +45,7 @@ export class SQLiteAdapter {
       () => this.createItemsTable(), 
       () => this.createIndexes(),
       () => this.addDiscordEventFields(),
+      () => this.createGuildSettingsTable(),
     ];
 
     const currentVersion = this.db.pragma('user_version', { simple: true }) as number;
@@ -102,6 +103,18 @@ export class SQLiteAdapter {
       ALTER TABLE potlucks ADD COLUMN event_end_time INTEGER;
       ALTER TABLE potlucks ADD COLUMN rsvp_sync_enabled INTEGER DEFAULT 0;
       CREATE INDEX IF NOT EXISTS idx_potlucks_discord_event_id ON potlucks (discord_event_id);
+    `);
+  }
+
+  private createGuildSettingsTable(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS guild_settings (
+        guild_id TEXT PRIMARY KEY,
+        timezone TEXT DEFAULT 'America/New_York',
+        updated_at INTEGER NOT NULL,
+        updated_by TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_guild_settings_timezone ON guild_settings (timezone);
     `);
   }
 }

@@ -1,7 +1,40 @@
 import * as chrono from 'chrono-node';
 import { createBotLogger } from './logger';
+import { StorageFactory } from '../storage/storage-factory';
 
 const logger = createBotLogger();
+const storage = StorageFactory.getStorage();
+
+/**
+ * Gets the effective timezone for parsing, with fallback logic:
+ * 1. Explicit timezone from options
+ * 2. Guild timezone setting 
+ * 3. Default timezone (EST)
+ */
+async function getEffectiveTimezone(options: DateParseOptions): Promise<string> {
+  // If timezone is explicitly provided, use it
+  if (options.timezone) {
+    return options.timezone;
+  }
+
+  // If guild ID is provided, try to get guild timezone
+  if (options.guildId) {
+    try {
+      const guildSettings = await storage.getGuildSettings(options.guildId);
+      if (guildSettings?.timezone) {
+        return guildSettings.timezone;
+      }
+    } catch (error) {
+      logger.warn({ 
+        guildId: options.guildId, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      }, 'Failed to get guild timezone, using default');
+    }
+  }
+
+  // Fallback to default
+  return DEFAULT_OPTIONS.timezone;
+}
 
 export interface ParsedEventDate {
   startTime: Date;
@@ -16,23 +49,28 @@ export interface DateParseOptions {
   defaultDurationHours?: number; // Default event duration in hours
   referenceDate?: Date; // Reference date for parsing relative dates
   futureBias?: boolean; // Prefer future dates when ambiguous
+  timezone?: string; // Target timezone for parsing and display
+  guildId?: string; // Guild ID for getting guild timezone settings
 }
 
-const DEFAULT_OPTIONS: Required<DateParseOptions> = {
+const DEFAULT_OPTIONS: Required<Omit<DateParseOptions, 'guildId'>> & { guildId?: string } = {
   defaultHour: 18, // 6 PM default for events
   defaultDurationHours: 3, // 3-hour default duration
   referenceDate: new Date(),
   futureBias: true,
+  timezone: 'America/New_York', // Default to EST
+  guildId: undefined,
 };
 
 /**
  * Parses a date string using natural language processing and returns event start/end times
  */
-export function parseEventDate(
+export async function parseEventDate(
   dateInput: string, 
   options: DateParseOptions = {}
-): ParsedEventDate | null {
+): Promise<ParsedEventDate | null> {
   const opts = { ...DEFAULT_OPTIONS, ...options };
+  const effectiveTimezone = await getEffectiveTimezone(opts);
   
   if (!dateInput || typeof dateInput !== 'string') {
     return null;
@@ -45,13 +83,27 @@ export function parseEventDate(
 
   logger.info({ 
     dateInput: trimmedInput, 
-    options: opts 
+    options: opts,
+    effectiveTimezone 
   }, 'Attempting to parse date string');
 
   // Try Chrono.js first for natural language parsing
   try {
-    const chronoResults = chrono.parse(trimmedInput, opts.referenceDate, {
+    // Create a reference date in the target timezone
+    const referenceInTimezone = new Date(opts.referenceDate.toLocaleString('en-US', { timeZone: effectiveTimezone }));
+    
+    const chronoResults = chrono.parse(trimmedInput, referenceInTimezone, {
       forwardDate: opts.futureBias,
+      timezones: {
+        EST: -5 * 60, // EST offset in minutes
+        EDT: -4 * 60, // EDT offset in minutes
+        CST: -6 * 60, // CST offset in minutes
+        CDT: -5 * 60, // CDT offset in minutes
+        MST: -7 * 60, // MST offset in minutes
+        MDT: -6 * 60, // MDT offset in minutes
+        PST: -8 * 60, // PST offset in minutes
+        PDT: -7 * 60, // PDT offset in minutes
+      },
     });
 
     if (chronoResults.length > 0) {
@@ -59,7 +111,7 @@ export function parseEventDate(
       if (result && result.start) {
         const startDate = result.start.date();
         
-        // If no time was specified, set to default hour
+        // If no time was specified, set to default hour in the target timezone
         if (!result.start.isCertain('hour')) {
           startDate.setHours(opts.defaultHour, 0, 0, 0);
         }
@@ -78,6 +130,7 @@ export function parseEventDate(
             originalInput: trimmedInput,
             parsedStart: startDate.toISOString(),
             parsedEnd: endDate.toISOString(),
+            effectiveTimezone,
             method: 'chrono'
           }, 'Successfully parsed date with Chrono.js');
 
@@ -114,6 +167,7 @@ export function parseEventDate(
         originalInput: trimmedInput,
         parsedStart: nativeDate.toISOString(),
         parsedEnd: endDate.toISOString(),
+        effectiveTimezone,
         method: 'native'
       }, 'Successfully parsed date with native Date constructor');
 
@@ -178,9 +232,9 @@ function isValidEventDate(date: Date): boolean {
 }
 
 /**
- * Formats a date for user-friendly display
+ * Formats a date for user-friendly display with timezone support
  */
-export function formatEventDate(date: Date): string {
+export function formatEventDate(date: Date, timezone?: string): string {
   return date.toLocaleDateString('en-US', {
     weekday: 'long',
     year: 'numeric',
@@ -188,6 +242,7 @@ export function formatEventDate(date: Date): string {
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+    timeZone: timezone,
     timeZoneName: 'short',
   });
 }
@@ -209,15 +264,15 @@ export function getDateExamples(): string[] {
 /**
  * Parses a date string specifically for potluck events with smart defaults
  */
-export function parsePotluckEventDate(
+export async function parsePotluckEventDate(
   dateInput: string | undefined,
   options: DateParseOptions = {}
-): ParsedEventDate {
+): Promise<ParsedEventDate> {
   if (!dateInput) {
     return createDefaultEventTimes(options);
   }
 
-  const parsed = parseEventDate(dateInput, {
+  const parsed = await parseEventDate(dateInput, {
     defaultHour: 18, // Evening events are common for potlucks
     defaultDurationHours: 3, // Typical potluck duration
     futureBias: true, // Always prefer future dates

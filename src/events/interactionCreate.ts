@@ -1,4 +1,4 @@
-import { Events, Interaction } from 'discord.js';
+import { Events, Interaction, MessageFlags } from 'discord.js';
 import { createCommandLogger } from '../utils/logger';
 import { handlePotluckModal, handleAddCustomModal, handlePotluckButtonInteraction, handlePotluckFromEventModal } from '../commands/potluck';
 
@@ -42,9 +42,9 @@ export default {
           const errorMessage = 'There was an error processing your request. Please try again.';
           
           if (interaction.replied || interaction.deferred) {
-            await interaction.followUp({ content: errorMessage, ephemeral: true });
+            await interaction.followUp({ content: errorMessage, flags: MessageFlags.Ephemeral });
           } else {
-            await interaction.reply({ content: errorMessage, ephemeral: true });
+            await interaction.reply({ content: errorMessage, flags: MessageFlags.Ephemeral });
           }
         }
         return;
@@ -98,9 +98,9 @@ export default {
       const errorMessage = 'There was an error while executing this command!';
       
       if (interaction.replied || interaction.deferred) {
-        await interaction.followUp({ content: errorMessage, ephemeral: true });
+        await interaction.followUp({ content: errorMessage, flags: MessageFlags.Ephemeral });
       } else {
-        await interaction.reply({ content: errorMessage, ephemeral: true });
+        await interaction.reply({ content: errorMessage, flags: MessageFlags.Ephemeral });
       }
     }
   },
