@@ -6,6 +6,8 @@ A Discord bot for organizing potluck events with interactive item management. Us
 
 - 🍽️ **Interactive Potlucks**: Create and manage potluck events with clickable buttons
 - 📋 **Item Management**: Users can claim/unclaim items and add custom items
+- 🎉 **Discord Events Integration**: Sync with Discord scheduled events, auto-create events, and manage RSVPs
+- 🌍 **Timezone Support**: Natural language date parsing with server-specific timezone defaults
 - 💾 **SQLite Storage**: Persistent database for reliable data storage
 - ⚡ **Fast**: Built with TypeScript and OXC linting (50-100x faster than ESLint)
 - 🎯 **Modern**: Uses discord.js v14 with latest best practices
@@ -67,12 +69,18 @@ src/
 ├── commands/          # Slash commands
 │   ├── potluck.ts    # Main potluck command with modal/button handlers
 │   ├── ping.ts       # Ping command with latency
-│   ├── hello.ts      # Hello command with user option
-│   └── serverinfo.ts # Server information embed
+│   ├── help.ts       # Comprehensive help command
+│   └── settimezone.ts # Admin timezone configuration
 ├── events/            # Discord events
 │   ├── ready.ts      # Bot ready event
 │   ├── interactionCreate.ts  # Handles slash commands, modals & buttons
-│   └── messageCreate.ts      # Text command handler
+│   ├── messageCreate.ts      # Text command handler
+│   ├── guildScheduledEventUpdate.ts    # Discord event sync
+│   ├── guildScheduledEventDelete.ts    # Discord event cleanup
+│   ├── guildScheduledEventUserAdd.ts   # Discord event RSVP sync
+│   └── guildScheduledEventUserRemove.ts # Discord event RSVP sync
+├── services/          # Business logic services
+│   └── discord-events.service.ts       # Discord events integration
 ├── storage/          # Data persistence layer
 │   ├── potluck.ts    # Potluck data types and interfaces
 │   ├── sqlite-potluck-storage.ts   # SQLite implementation
@@ -81,7 +89,8 @@ src/
 ├── types/            # TypeScript type definitions
 │   └── index.ts      # Command interface & client extensions
 ├── utils/            # Utility functions
-│   └── logger.ts     # Pino structured logging
+│   ├── logger.ts     # Pino structured logging
+│   └── date-parser.ts # Natural language date parsing
 ├── index.ts          # Main bot file
 └── deploy-commands.ts # Command deployment script
 ```
@@ -111,8 +120,8 @@ Once created, the potluck displays as an interactive embed with:
 
 **Utility Commands:**
 - `/ping` - Shows bot latency and heartbeat
-- `/hello [@user]` - Greets you or another user
-- `/serverinfo` - Displays server information with embed
+- `/help` - Comprehensive help guide with all bot features
+- `/settimezone [timezone]` - Set default timezone for the server (Admin only)
 
 **Text Commands (prefix: `!`):**
 - `!ping` - Simple pong response
@@ -157,6 +166,7 @@ Add new cases to the switch statement in `src/events/messageCreate.ts`.
 - Use Slash Commands
 - Read Message History
 - Embed Links
+- Manage Events (for Discord event integration)
 
 ### Required Intents
 - Guilds
@@ -168,6 +178,7 @@ Add new cases to the switch statement in `src/events/messageCreate.ts`.
 - **[discord.js](https://discord.js.org/)** - Powerful Discord API library
 - **[TypeScript](https://www.typescriptlang.org/)** - Type-safe JavaScript
 - **[better-sqlite3](https://github.com/WiseLibs/better-sqlite3)** - Fast SQLite database for Node.js
+- **[chrono-node](https://github.com/wanasit/chrono)** - Natural language date parsing
 - **[Pino](https://getpino.io/)** - High-performance structured logging
 - **[OXC](https://oxc.rs/)** - Fast Rust-based linter
 - **[tsx](https://github.com/esbuild-kit/tsx)** - TypeScript execution engine
