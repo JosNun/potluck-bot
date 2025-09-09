@@ -147,7 +147,7 @@ export default {
       .setLabel('Date & Time (optional)')
       .setStyle(TextInputStyle.Short)
       .setRequired(false)
-      .setPlaceholder('e.g., Saturday at 6pm, next Friday, Dec 14th at 7:30pm')
+      .setPlaceholder('Creates Discord event if provided. e.g., Saturday at 6pm, Dec 14th')
       .setMaxLength(100);
 
     const themeInput = new TextInputBuilder()
@@ -166,21 +166,12 @@ export default {
       .setPlaceholder('lettuce\nmeat\ntortillas\nbeans\nsour cream\ncheese\nsalsa')
       .setMaxLength(2000);
 
-    const eventDetailsInput = new TextInputBuilder()
-      .setCustomId('event-details')
-      .setLabel('Create Discord Event (optional)')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(false)
-      .setPlaceholder('Type "yes" to create a Discord scheduled event with smart time parsing')
-      .setMaxLength(100);
-
     const nameRow = new ActionRowBuilder<TextInputBuilder>().addComponents(nameInput);
     const dateRow = new ActionRowBuilder<TextInputBuilder>().addComponents(dateInput);
     const themeRow = new ActionRowBuilder<TextInputBuilder>().addComponents(themeInput);
     const itemsRow = new ActionRowBuilder<TextInputBuilder>().addComponents(itemsInput);
-    const eventRow = new ActionRowBuilder<TextInputBuilder>().addComponents(eventDetailsInput);
 
-    modal.addComponents(nameRow, dateRow, themeRow, itemsRow, eventRow);
+    modal.addComponents(nameRow, dateRow, themeRow, itemsRow);
 
     await interaction.showModal(modal);
   },
@@ -261,19 +252,10 @@ async function handlePotluckFromEvent(interaction: ChatInputCommandInteraction, 
       .setPlaceholder('lettuce\nmeat\ntortillas\nbeans\nsour cream\ncheese\nsalsa')
       .setMaxLength(2000);
 
-    const locationInput = new TextInputBuilder()
-      .setCustomId('potluck-location')
-      .setLabel('Location override (optional)')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(false)
-      .setPlaceholder('Leave empty to use event location')
-      .setMaxLength(200);
-
     const themeRow = new ActionRowBuilder<TextInputBuilder>().addComponents(themeInput);
     const itemsRow = new ActionRowBuilder<TextInputBuilder>().addComponents(itemsInput);
-    const locationRow = new ActionRowBuilder<TextInputBuilder>().addComponents(locationInput);
 
-    modal.addComponents(themeRow, itemsRow, locationRow);
+    modal.addComponents(themeRow, itemsRow);
 
     await interaction.showModal(modal);
   } catch (error) {
@@ -291,7 +273,6 @@ export async function handlePotluckFromEventModal(interaction: ModalSubmitIntera
   const eventId = interaction.customId.replace('potluck-from-event-', '');
   const theme = interaction.fields.getTextInputValue('potluck-theme') || undefined;
   const itemsText = interaction.fields.getTextInputValue('potluck-items');
-  const _locationOverride = interaction.fields.getTextInputValue('potluck-location') || undefined;
 
   try {
     // Fetch the Discord event again to get current data
@@ -391,7 +372,7 @@ export async function handlePotluckModal(interaction: ModalSubmitInteraction) {
   const date = interaction.fields.getTextInputValue('potluck-date') || undefined;
   const theme = interaction.fields.getTextInputValue('potluck-theme') || undefined;
   const itemsText = interaction.fields.getTextInputValue('potluck-items');
-  const createEvent = interaction.fields.getTextInputValue('event-details').toLowerCase().includes('yes');
+  const createEvent = !!date;
 
   const items: PotluckItem[] = itemsText
     .split('\n')
