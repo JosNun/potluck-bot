@@ -20,7 +20,7 @@ A Discord bot for organizing potluck events with interactive item management. Us
 
 ```bash
 # Clone this repository
-git clone <your-repo-url>
+git clone https://github.com/JosNun/potluck-bot
 cd potluck-bot
 
 # Install dependencies
@@ -32,8 +32,6 @@ pnpm install
 ```bash
 # Copy environment template
 cp .env.example .env
-
-# Edit .env with your bot credentials
 ```
 
 Add your Discord bot token and application ID to `.env`:
